@@ -1,0 +1,143 @@
+# Architecture Rules
+
+Rules for a senior developer persona operating across Go and Python services.
+
+---
+
+## Go — Clean Architecture
+
+### Layer Structure
+
+Every service is divided into exactly three layers, with dependencies pointing inward only:
+
+```
+cmd/              ← entry points (gRPC server, REST gateway, CLI)
+internal/
+  domain/         ← entities, value objects, domain errors (no external deps)
+  usecase/        ← business logic, orchestration, interfaces for ports
+  infra/          ← data logic: DB repos, external clients, gRPC implementations
+proto/            ← .proto definitions (source of truth for API contracts)
+```
+
+**Rules:**
+- `domain/` imports nothing from `usecase/` or `infra/`.
+- `usecase/` defines interfaces (ports); `infra/` implements them.
+- `infra/` is the only layer allowed to import DB drivers, HTTP clients, or third-party SDKs.
+- No logic lives in `cmd/` — only wiring (DI, config loading, server start).
+
+### gRPC + REST Gateway
+
+- All external-facing APIs are defined as gRPC services in `proto/*.proto`.
+- REST endpoints are generated via [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway) annotations — never hand-written HTTP handlers.
+- Proto files include both `google.api.http` annotations and `openapiv2` options so Swagger docs are generated alongside the gateway.
+- Generated code lives in `gen/go/` (committed) and is never edited by hand.
+
+**Workflow:**
+```bash
+buf generate          # regenerate gen/go/ from proto/
+buf lint              # lint proto files
+buf breaking --against .git#branch=main   # check for breaking changes
+```
+
+### CLI — `<project>ctl`
+
+Every service ships a CLI binary named `<project>ctl` (e.g. `authctl`, `orderctl`).
+
+- Built with [Cobra](https://github.com/spf13/cobra) for command structure.
+- All configuration (flags, env vars, config files) is managed by [Viper](https://github.com/spf13/viper).
+- Each REST/gRPC endpoint has a matching CLI command under the appropriate subcommand group.
+- Viper is initialized in the root `PersistentPreRunE`; individual commands never call `viper.Get*` in `init()`.
+- Config file search path: `$HOME/.<project>ctl.yaml`, `./<project>ctl.yaml`, env vars prefixed `<PROJECT>_`.
+
+```
+<project>ctl
+  serve          ← start gRPC + REST gateway server
+  <resource>
+    create       ← maps to CreateResource RPC
+    get          ← maps to GetResource RPC
+    list         ← maps to ListResources RPC
+    delete       ← maps to DeleteResource RPC
+```
+
+### Code Quality (Go)
+
+- Interfaces are defined at the point of use (in `usecase/`), not at the point of implementation.
+- Constructor functions (`New*`) accept interfaces, never concrete types.
+- Errors are wrapped with `fmt.Errorf("context: %w", err)` — no raw `errors.New` in `usecase/` or `infra/`.
+- Table-driven tests with `t.Run` for all use case logic.
+- `golangci-lint` runs on every PR; `.golangci.yaml` is the single source of lint config.
+
+```bash
+go build ./...
+go test ./...
+golangci-lint run
+```
+
+---
+
+## Python — Clean Architecture
+
+### Layer Structure
+
+Mirror the Go layout using Python packages:
+
+```
+src/<project>/
+  domain/         ← dataclasses/Pydantic models, domain exceptions
+  usecase/        ← business logic, Protocol classes as ports
+  infra/          ← SQLAlchemy repos, HTTP clients, external integrations
+  entrypoints/    ← FastAPI routers, CLI (Typer/Click), gRPC servicers
+tests/
+  unit/           ← usecase + domain tests (no I/O)
+  integration/    ← infra layer tests against real or containerised deps
+```
+
+**Rules:**
+- `domain/` has zero third-party imports.
+- `usecase/` depends only on `domain/` and `typing.Protocol` abstractions.
+- `infra/` is the only layer that imports SQLAlchemy, httpx, boto3, etc.
+
+### Toolchain
+
+| Tool | Purpose |
+|---|---|
+| `uv` | Virtual env creation, dependency management, lock file (`uv.lock`) |
+| `pytest` | Test runner — all tests live in `tests/`, discovered automatically |
+| `ruff` | Linting and formatting (replaces flake8, isort, black) |
+| `mypy` | Static type checking — strict mode enabled |
+| `pre-commit` | Runs ruff + mypy on commit |
+
+```bash
+uv sync                          # install all deps from uv.lock
+uv run pytest                    # run full test suite
+uv run pytest tests/unit/        # unit tests only
+uv run pytest -k "test_name"     # single test
+uv run ruff check .              # lint
+uv run ruff format .             # format
+uv run mypy src/                 # type check
+```
+
+### Code Quality (Python) — Google Style
+
+- Follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
+- All public functions, classes, and modules have Google-style docstrings.
+- Type annotations on all function signatures — no `Any` without an explanatory comment.
+- Prefer `dataclasses` or `pydantic.BaseModel` for value objects; no raw `dict` crossing layer boundaries.
+- Tests use `pytest` fixtures, not `unittest.TestCase`. Parametrize with `@pytest.mark.parametrize`.
+- `conftest.py` at the `tests/` root for shared fixtures; never put fixtures in test files.
+- Integration tests are marked `@pytest.mark.integration` and excluded from default `pytest` runs via `pyproject.toml`.
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+addopts = "-m 'not integration'"
+markers = ["integration: requires external services"]
+```
+
+---
+
+## Cross-Cutting Rules (Both Languages)
+
+- The service boundary is the `.proto` file. Any behaviour change that affects the API contract must update the proto first.
+- Secrets are never hardcoded; they are injected via environment variables or a secrets manager. Config structs are populated at startup only.
+- Each new feature ships with: unit tests (use case layer) + at least one integration test (infra layer) + a matching CLI command.

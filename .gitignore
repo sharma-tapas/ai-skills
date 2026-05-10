@@ -1,0 +1,6 @@
+.claude/
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/.graphify_root
+graphify-out/.graphify_python
+# graphify-out/cache/         # optional: commit for speed, skip to keep repo small

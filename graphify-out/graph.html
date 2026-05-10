@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphify - graphify-out/graph.html</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #graph { flex: 1; }
+  #sidebar { width: 280px; background: #1a1a2e; border-left: 1px solid #2a2a4e; display: flex; flex-direction: column; overflow: hidden; }
+  #search-wrap { padding: 12px; border-bottom: 1px solid #2a2a4e; }
+  #search { width: 100%; background: #0f0f1a; border: 1px solid #3a3a5e; color: #e0e0e0; padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  #search:focus { border-color: #4E79A7; }
+  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid #2a2a4e; display: none; }
+  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: #2a2a4e; }
+  #info-panel { padding: 14px; border-bottom: 1px solid #2a2a4e; min-height: 140px; }
+  #info-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #info-content { font-size: 13px; color: #ccc; line-height: 1.6; }
+  #info-content .field { margin-bottom: 5px; }
+  #info-content .field b { color: #e0e0e0; }
+  #info-content .empty { color: #555; font-style: italic; }
+  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #333; }
+  .neighbor-link:hover { background: #2a2a4e; }
+  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+  #legend-wrap h3 { font-size: 13px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
+  .legend-item:hover { background: #2a2a4e; padding-left: 4px; }
+  .legend-item.dimmed { opacity: 0.35; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { color: #666; font-size: 11px; }
+  #stats { padding: 10px 14px; border-top: 1px solid #2a2a4e; font-size: 11px; color: #555; }
+  #legend-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; }
+  #legend-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #aaa; user-select: none; }
+  #legend-controls label:hover { color: #e0e0e0; }
+  .legend-cb, #select-all-cb { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid #3a3a5e; border-radius: 3px; background: #0f0f1a; cursor: pointer; position: relative; flex-shrink: 0; }
+  .legend-cb:checked, #select-all-cb:checked { background: #4E79A7; border-color: #4E79A7; }
+  .legend-cb:checked::after, #select-all-cb:checked::after { content: ''; position: absolute; left: 3.5px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  #select-all-cb:indeterminate { background: #4E79A7; border-color: #4E79A7; }
+  #select-all-cb:indeterminate::after { content: ''; position: absolute; left: 2px; top: 5px; width: 8px; height: 2px; background: #fff; border: none; transform: none; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="sidebar">
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="info-panel">
+    <h3>Node Info</h3>
+    <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
+  </div>
+  <div id="legend-wrap">
+    <h3>Communities</h3>
+    <div id="legend-controls">
+      <label><input type="checkbox" id="select-all-cb" checked onchange="toggleAllCommunities(!this.checked)">Select All</label>
+    </div>
+    <div id="legend"></div>
+  </div>
+  <div id="stats">57 nodes &middot; 50 edges &middot; 26 communities</div>
+</div>
+<script>
+const RAW_NODES = [{"id": "readme_tapas_claude_toolkit", "label": "tapas-claude-toolkit Plugin", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "tapas-claude-toolkit Plugin", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "README.md", "file_type": "document", "degree": 13}, {"id": "readme_feature_development_workflow", "label": "Feature Development Workflow (Brainstorm \u2192 Grill \u2192 PRD)", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 16.9, "font": {"size": 12, "color": "#ffffff"}, "title": "Feature Development Workflow (Brainstorm \u2192 Grill \u2192 PRD)", "community": 2, "community_name": "Feature Planning Pipeline", "source_file": "README.md", "file_type": "rationale", "degree": 3}, {"id": "readme_vertical_slice_principle", "label": "Vertical Slices Over Horizontal Layers Principle", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Vertical Slices Over Horizontal Layers Principle", "community": 11, "community_name": "Vertical Slices & Issue Decomposition", "source_file": "README.md", "file_type": "rationale", "degree": 2}, {"id": "readme_behavior_over_implementation", "label": "Behavior Over Implementation Testing Principle", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Behavior Over Implementation Testing Principle", "community": 7, "community_name": "Behavior Over Implementation", "source_file": "README.md", "file_type": "rationale", "degree": 2}, {"id": "skill_tdd_tdd_workflow", "label": "TDD Workflow Skill", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "TDD Workflow Skill", "community": 1, "community_name": "TDD Workflow & Git Checkpoints", "source_file": "skills/tdd/SKILL.md", "file_type": "document", "degree": 13}, {"id": "skill_tdd_red_green_refactor", "label": "RED-GREEN-REFACTOR Cycle", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "RED-GREEN-REFACTOR Cycle", "community": 4, "community_name": "Red-Green-Refactor Cycle", "source_file": "skills/tdd/SKILL.md", "file_type": "rationale", "degree": 2}, {"id": "skill_tdd_tracer_bullet", "label": "Tracer Bullet TDD Pattern", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Tracer Bullet TDD Pattern", "community": 4, "community_name": "Red-Green-Refactor Cycle", "source_file": "skills/tdd/SKILL.md", "file_type": "rationale", "degree": 2}, {"id": "skill_tdd_horizontal_slicing_antipattern", "label": "Horizontal Slicing Anti-Pattern", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Horizontal Slicing Anti-Pattern", "community": 4, "community_name": "Red-Green-Refactor Cycle", "source_file": "skills/tdd/SKILL.md", "file_type": "rationale", "degree": 2}, {"id": "skill_tdd_git_checkpoint", "label": "Git Checkpoint Commits at TDD Stages", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Git Checkpoint Commits at TDD Stages", "community": 1, "community_name": "TDD Workflow & Git Checkpoints", "source_file": "skills/tdd/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "tdd_mocking_mocking_guidelines", "label": "Mocking Guidelines", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Mocking Guidelines", "community": 6, "community_name": "Mocking Strategies", "source_file": "skills/tdd/mocking.md", "file_type": "document", "degree": 2}, {"id": "tdd_mocking_system_boundary_mock", "label": "Mock at System Boundaries Only", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Mock at System Boundaries Only", "community": 3, "community_name": "Interface Design & Dependency Injection", "source_file": "skills/tdd/mocking.md", "file_type": "rationale", "degree": 1}, {"id": "tdd_mocking_sdk_style_interfaces", "label": "SDK-Style Interfaces for Mockability", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "SDK-Style Interfaces for Mockability", "community": 13, "community_name": "SDK-Style Interface Mocking", "source_file": "skills/tdd/mocking.md", "file_type": "rationale", "degree": 0}, {"id": "tdd_deepmodules_deep_module_design", "label": "Deep Module Design Principle", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 16.9, "font": {"size": 12, "color": "#ffffff"}, "title": "Deep Module Design Principle", "community": 5, "community_name": "Deep Module Design", "source_file": "skills/tdd/deep-modules.md", "file_type": "rationale", "degree": 3}, {"id": "tdd_tests_good_vs_bad_tests", "label": "Good vs Bad Tests Reference", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Good vs Bad Tests Reference", "community": 1, "community_name": "TDD Workflow & Git Checkpoints", "source_file": "skills/tdd/tests.md", "file_type": "document", "degree": 1}, {"id": "tdd_tests_behavior_testing", "label": "Behavior-Based Testing (Test Through Public Interfaces)", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Behavior-Based Testing (Test Through Public Interfaces)", "community": 7, "community_name": "Behavior Over Implementation", "source_file": "skills/tdd/tests.md", "file_type": "rationale", "degree": 1}, {"id": "tdd_interfacedesign_interface_for_testability", "label": "Interface Design for Testability", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Interface Design for Testability", "community": 5, "community_name": "Deep Module Design", "source_file": "skills/tdd/interface-design.md", "file_type": "document", "degree": 2}, {"id": "tdd_interfacedesign_dependency_injection", "label": "Dependency Injection for Testability", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Dependency Injection for Testability", "community": 3, "community_name": "Interface Design & Dependency Injection", "source_file": "skills/tdd/interface-design.md", "file_type": "rationale", "degree": 2}, {"id": "tdd_refactoring_refactor_candidates", "label": "Refactoring Candidates After TDD Cycle", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Refactoring Candidates After TDD Cycle", "community": 1, "community_name": "TDD Workflow & Git Checkpoints", "source_file": "skills/tdd/refactoring.md", "file_type": "document", "degree": 1}, {"id": "skill_golangpatterns_golang_patterns", "label": "Golang Patterns Skill", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Golang Patterns Skill", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "skills/golang-patterns/SKILL.md", "file_type": "document", "degree": 1}, {"id": "skill_golangpatterns_accept_interfaces_return_structs", "label": "Accept Interfaces Return Structs Go Idiom", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Accept Interfaces Return Structs Go Idiom", "community": 3, "community_name": "Interface Design & Dependency Injection", "source_file": "skills/golang-patterns/SKILL.md", "file_type": "rationale", "degree": 2}, {"id": "skill_golangpatterns_clean_architecture", "label": "Clean Architecture Layers (domain \u2192 usecase \u2192 infra)", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Clean Architecture Layers (domain \u2192 usecase \u2192 infra)", "community": 8, "community_name": "Clean Architecture (Go + Python)", "source_file": "skills/golang-patterns/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_golangpatterns_functional_options", "label": "Functional Options Pattern", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Functional Options Pattern", "community": 14, "community_name": "Functional Options Pattern", "source_file": "skills/golang-patterns/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_golangpatterns_error_wrapping", "label": "Error Wrapping with Context", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Error Wrapping with Context", "community": 15, "community_name": "Go Error Wrapping", "source_file": "skills/golang-patterns/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_golangpatterns_context_propagation", "label": "Context Propagation and Cancellation", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Context Propagation and Cancellation", "community": 16, "community_name": "Context Propagation", "source_file": "skills/golang-patterns/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_golangtesting_golang_testing", "label": "Golang Testing Skill", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 16.9, "font": {"size": 12, "color": "#ffffff"}, "title": "Golang Testing Skill", "community": 9, "community_name": "Testing Isolation & Integration", "source_file": "skills/golang-testing/SKILL.md", "file_type": "document", "degree": 3}, {"id": "skill_golangtesting_table_driven_tests", "label": "Table-Driven Tests Pattern", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Table-Driven Tests Pattern", "community": 10, "community_name": "Table-Driven & Parametrize Tests", "source_file": "skills/golang-testing/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_golangtesting_fuzz_testing", "label": "Fuzz Testing with testing.F", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Fuzz Testing with testing.F", "community": 17, "community_name": "Fuzz Testing", "source_file": "skills/golang-testing/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_golangtesting_interface_mocking", "label": "Interface-Based Mocking in Go", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Interface-Based Mocking in Go", "community": 6, "community_name": "Mocking Strategies", "source_file": "skills/golang-testing/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_pythonpatterns_python_patterns", "label": "Python Patterns Skill", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Python Patterns Skill", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "skills/python-patterns/SKILL.md", "file_type": "document", "degree": 1}, {"id": "skill_pythonpatterns_clean_architecture", "label": "Python Clean Architecture (domain \u2192 usecase \u2192 infra \u2192 entrypoints)", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Python Clean Architecture (domain \u2192 usecase \u2192 infra \u2192 entrypoints)", "community": 8, "community_name": "Clean Architecture (Go + Python)", "source_file": "skills/python-patterns/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_pythonpatterns_protocol_based_typing", "label": "Protocol-Based Duck Typing", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Protocol-Based Duck Typing", "community": 3, "community_name": "Interface Design & Dependency Injection", "source_file": "skills/python-patterns/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_pythonpatterns_eafp", "label": "EAFP (Easier to Ask Forgiveness Than Permission)", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "EAFP (Easier to Ask Forgiveness Than Permission)", "community": 18, "community_name": "EAFP Python Idiom", "source_file": "skills/python-patterns/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_pythontesting_python_testing", "label": "Python Testing Skill", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Python Testing Skill", "community": 1, "community_name": "TDD Workflow & Git Checkpoints", "source_file": "skills/python-testing/SKILL.md", "file_type": "document", "degree": 2}, {"id": "skill_pythontesting_pytest_fixtures", "label": "pytest Fixture Design", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "pytest Fixture Design", "community": 19, "community_name": "Pytest Fixtures", "source_file": "skills/python-testing/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_pythontesting_parametrize", "label": "Parametrize for Table-Driven Python Tests", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Parametrize for Table-Driven Python Tests", "community": 10, "community_name": "Table-Driven & Parametrize Tests", "source_file": "skills/python-testing/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_pythontesting_integration_isolation", "label": "Integration Test Isolation with Markers", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Integration Test Isolation with Markers", "community": 9, "community_name": "Testing Isolation & Integration", "source_file": "skills/python-testing/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_grillme_grill_me", "label": "Grill-Me Design Interview Skill", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 19.2, "font": {"size": 12, "color": "#ffffff"}, "title": "Grill-Me Design Interview Skill", "community": 2, "community_name": "Feature Planning Pipeline", "source_file": "skills/grill-me/SKILL.md", "file_type": "document", "degree": 4}, {"id": "skill_grillme_decision_tree_interview", "label": "Decision Tree Interview Process", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Decision Tree Interview Process", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "skills/grill-me/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_grillme_adr_criteria", "label": "ADR Writing Criteria (Hard to Reverse + Surprising + Real Trade-off)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "ADR Writing Criteria (Hard to Reverse + Surprising + Real Trade-off)", "community": 20, "community_name": "ADR Criteria", "source_file": "skills/grill-me/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_toprd_to_prd", "label": "To-PRD Skill", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 19.2, "font": {"size": 12, "color": "#ffffff"}, "title": "To-PRD Skill", "community": 2, "community_name": "Feature Planning Pipeline", "source_file": "skills/to-prd/SKILL.md", "file_type": "document", "degree": 4}, {"id": "skill_toprd_prd_template", "label": "PRD Template Structure", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "PRD Template Structure", "community": 21, "community_name": "PRD Template", "source_file": "skills/to-prd/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_toprd_deep_module_opportunity", "label": "Deep Module Extraction During PRD", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Deep Module Extraction During PRD", "community": 5, "community_name": "Deep Module Design", "source_file": "skills/to-prd/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_toissues_to_issues", "label": "To-Issues Skill", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.9, "font": {"size": 12, "color": "#ffffff"}, "title": "To-Issues Skill", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "skills/to-issues/SKILL.md", "file_type": "document", "degree": 3}, {"id": "skill_toissues_hitl_afk_slices", "label": "HITL vs AFK Issue Classification", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "HITL vs AFK Issue Classification", "community": 11, "community_name": "Vertical Slices & Issue Decomposition", "source_file": "skills/to-issues/SKILL.md", "file_type": "rationale", "degree": 1}, {"id": "skill_jira_jira_integration", "label": "Jira Integration Skill", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Jira Integration Skill", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "skills/jira/SKILL.md", "file_type": "document", "degree": 2}, {"id": "skill_jira_mcp_vs_rest", "label": "MCP vs REST API Fallback Pattern for Jira", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "MCP vs REST API Fallback Pattern for Jira", "community": 22, "community_name": "Jira MCP vs REST", "source_file": "skills/jira/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_guardrails_guardrails", "label": "Guardrails Skill", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Guardrails Skill", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "skills/guardrails/SKILL.md", "file_type": "document", "degree": 2}, {"id": "skill_guardrails_three_modes", "label": "Guardrails Three Modes (Careful / Freeze / Guard)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Guardrails Three Modes (Careful / Freeze / Guard)", "community": 23, "community_name": "Guardrails Modes", "source_file": "skills/guardrails/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "skill_teambuilder_team_builder", "label": "Team Builder Skill", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Team Builder Skill", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "skills/team-builder/SKILL.md", "file_type": "document", "degree": 1}, {"id": "skill_teambuilder_parallel_agent_dispatch", "label": "Parallel Agent Dispatch Pattern", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Parallel Agent Dispatch Pattern", "community": 24, "community_name": "Parallel Agent Dispatch", "source_file": "skills/team-builder/SKILL.md", "file_type": "rationale", "degree": 0}, {"id": "claudemd_project_project_config", "label": "Project Configuration (claude.md/project.md)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 19.2, "font": {"size": 12, "color": "#ffffff"}, "title": "Project Configuration (claude.md/project.md)", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "claude.md/project.md", "file_type": "document", "degree": 4}, {"id": "claudemd_project_prometheus_metrics", "label": "Mandatory Prometheus Metrics Requirement", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Mandatory Prometheus Metrics Requirement", "community": 12, "community_name": "gRPC Gateway & Metrics", "source_file": "claude.md/project.md", "file_type": "rationale", "degree": 1}, {"id": "claudemd_project_grpc_gateway", "label": "gRPC + grpc-gateway Service Structure", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "gRPC + grpc-gateway Service Structure", "community": 12, "community_name": "gRPC Gateway & Metrics", "source_file": "claude.md/project.md", "file_type": "rationale", "degree": 1}, {"id": "claudemd_project_ralph_loop_workflow", "label": "Ralph Loop Iterative Development Workflow", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 14.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Ralph Loop Iterative Development Workflow", "community": 2, "community_name": "Feature Planning Pipeline", "source_file": "claude.md/project.md", "file_type": "rationale", "degree": 2}, {"id": "claudemd_global_global_guardrails", "label": "Global Development Guardrails (claude.md/global.md)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.9, "font": {"size": 12, "color": "#ffffff"}, "title": "Global Development Guardrails (claude.md/global.md)", "community": 0, "community_name": "Project Config & Global Rules", "source_file": "claude.md/global.md", "file_type": "document", "degree": 3}, {"id": "claudemd_global_scope_discipline", "label": "Scope Discipline Rules", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Scope Discipline Rules", "community": 25, "community_name": "Scope Discipline", "source_file": "claude.md/global.md", "file_type": "rationale", "degree": 0}, {"id": "claudemd_global_ralph_loop", "label": "Ralph Loop Workflow", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 12.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Ralph Loop Workflow", "community": 2, "community_name": "Feature Planning Pipeline", "source_file": "claude.md/global.md", "file_type": "rationale", "degree": 1}];
+const RAW_EDGES = [{"from": "readme_tapas_claude_toolkit", "to": "skill_tdd_tdd_workflow", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_golangpatterns_golang_patterns", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_golangtesting_golang_testing", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_pythonpatterns_python_patterns", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_pythontesting_python_testing", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_grillme_grill_me", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_toprd_to_prd", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_toissues_to_issues", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_jira_jira_integration", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_guardrails_guardrails", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "skill_teambuilder_team_builder", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "claudemd_project_project_config", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_tapas_claude_toolkit", "to": "claudemd_global_global_guardrails", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_feature_development_workflow", "to": "skill_grillme_grill_me", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_feature_development_workflow", "to": "skill_toprd_to_prd", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_feature_development_workflow", "to": "claudemd_project_ralph_loop_workflow", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "readme_vertical_slice_principle", "to": "skill_tdd_tdd_workflow", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_vertical_slice_principle", "to": "skill_toissues_hitl_afk_slices", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_behavior_over_implementation", "to": "skill_tdd_tdd_workflow", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_behavior_over_implementation", "to": "tdd_tests_behavior_testing", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_tdd_tdd_workflow", "to": "tdd_mocking_mocking_guidelines", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "tdd_tests_good_vs_bad_tests", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "tdd_deepmodules_deep_module_design", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "tdd_interfacedesign_interface_for_testability", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "tdd_refactoring_refactor_candidates", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "skill_tdd_red_green_refactor", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "skill_tdd_horizontal_slicing_antipattern", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "skill_tdd_git_checkpoint", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "skill_golangtesting_golang_testing", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tdd_workflow", "to": "skill_pythontesting_python_testing", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_red_green_refactor", "to": "skill_tdd_tracer_bullet", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_tdd_tracer_bullet", "to": "skill_tdd_horizontal_slicing_antipattern", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "tdd_mocking_mocking_guidelines", "to": "skill_golangtesting_interface_mocking", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "tdd_mocking_system_boundary_mock", "to": "tdd_interfacedesign_dependency_injection", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "tdd_deepmodules_deep_module_design", "to": "skill_toprd_deep_module_opportunity", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "tdd_deepmodules_deep_module_design", "to": "tdd_interfacedesign_interface_for_testability", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "tdd_interfacedesign_dependency_injection", "to": "skill_golangpatterns_accept_interfaces_return_structs", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_golangpatterns_accept_interfaces_return_structs", "to": "skill_pythonpatterns_protocol_based_typing", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_golangpatterns_clean_architecture", "to": "skill_pythonpatterns_clean_architecture", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_golangtesting_golang_testing", "to": "skill_pythontesting_integration_isolation", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_golangtesting_table_driven_tests", "to": "skill_pythontesting_parametrize", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_grillme_grill_me", "to": "skill_toprd_to_prd", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_grillme_grill_me", "to": "claudemd_project_project_config", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_grillme_decision_tree_interview", "to": "claudemd_project_project_config", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "skill_toprd_to_prd", "to": "skill_toissues_to_issues", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_toissues_to_issues", "to": "skill_jira_jira_integration", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "skill_guardrails_guardrails", "to": "claudemd_global_global_guardrails", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "claudemd_project_project_config", "to": "claudemd_global_global_guardrails", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "claudemd_project_prometheus_metrics", "to": "claudemd_project_grpc_gateway", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "claudemd_project_ralph_loop_workflow", "to": "claudemd_global_ralph_loop", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}];
+const LEGEND = [{"cid": 0, "color": "#4E79A7", "label": "Project Config &amp; Global Rules", "count": 10}, {"cid": 1, "color": "#F28E2B", "label": "TDD Workflow &amp; Git Checkpoints", "count": 5}, {"cid": 2, "color": "#E15759", "label": "Feature Planning Pipeline", "count": 5}, {"cid": 3, "color": "#76B7B2", "label": "Interface Design &amp; Dependency Injection", "count": 4}, {"cid": 4, "color": "#59A14F", "label": "Red-Green-Refactor Cycle", "count": 3}, {"cid": 5, "color": "#EDC948", "label": "Deep Module Design", "count": 3}, {"cid": 6, "color": "#B07AA1", "label": "Mocking Strategies", "count": 2}, {"cid": 7, "color": "#FF9DA7", "label": "Behavior Over Implementation", "count": 2}, {"cid": 8, "color": "#9C755F", "label": "Clean Architecture (Go + Python)", "count": 2}, {"cid": 9, "color": "#BAB0AC", "label": "Testing Isolation &amp; Integration", "count": 2}, {"cid": 10, "color": "#4E79A7", "label": "Table-Driven &amp; Parametrize Tests", "count": 2}, {"cid": 11, "color": "#F28E2B", "label": "Vertical Slices &amp; Issue Decomposition", "count": 2}, {"cid": 12, "color": "#E15759", "label": "gRPC Gateway &amp; Metrics", "count": 2}, {"cid": 13, "color": "#76B7B2", "label": "SDK-Style Interface Mocking", "count": 1}, {"cid": 14, "color": "#59A14F", "label": "Functional Options Pattern", "count": 1}, {"cid": 15, "color": "#EDC948", "label": "Go Error Wrapping", "count": 1}, {"cid": 16, "color": "#B07AA1", "label": "Context Propagation", "count": 1}, {"cid": 17, "color": "#FF9DA7", "label": "Fuzz Testing", "count": 1}, {"cid": 18, "color": "#9C755F", "label": "EAFP Python Idiom", "count": 1}, {"cid": 19, "color": "#BAB0AC", "label": "Pytest Fixtures", "count": 1}, {"cid": 20, "color": "#4E79A7", "label": "ADR Criteria", "count": 1}, {"cid": 21, "color": "#F28E2B", "label": "PRD Template", "count": 1}, {"cid": 22, "color": "#E15759", "label": "Jira MCP vs REST", "count": 1}, {"cid": 23, "color": "#76B7B2", "label": "Guardrails Modes", "count": 1}, {"cid": 24, "color": "#59A14F", "label": "Parallel Agent Dispatch", "count": 1}, {"cid": 25, "color": "#EDC948", "label": "Scope Discipline", "count": 1}];
+
+// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Build vis datasets
+const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({
+  id: n.id, label: n.label, color: n.color, size: n.size,
+  font: n.font, title: n.title,
+  _community: n.community, _community_name: n.community_name,
+  _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
+})));
+
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  label: '',
+  title: e.title,
+  dashes: e.dashes,
+  width: e.width,
+  color: e.color,
+  arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+})));
+
+const container = document.getElementById('graph');
+const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -60,
+      centralGravity: 0.005,
+      springLength: 120,
+      springConstant: 0.08,
+      damping: 0.4,
+      avoidOverlap: 0.8,
+    },
+    stabilization: { iterations: 200, fit: true },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 100,
+    hideEdgesOnDrag: true,
+    navigationButtons: false,
+    keyboard: false,
+  },
+  nodes: { shape: 'dot', borderWidth: 1.5 },
+  edges: { smooth: { type: 'continuous', roundness: 0.2 }, selectionWidth: 3 },
+});
+
+network.once('stabilizationIterationsDone', () => {
+  network.setOptions({ physics: { enabled: false } });
+});
+
+function showInfo(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const neighborIds = network.getConnectedNodes(nodeId);
+  const neighborItems = neighborIds.map(nid => {
+    const nb = nodesDS.get(nid);
+    const color = nb ? nb.color.background : '#555';
+    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" onclick="focusNode(${JSON.stringify(nid)})">${esc(nb ? nb.label : nid)}</span>`;
+  }).join('');
+  document.getElementById('info-content').innerHTML = `
+    <div class="field"><b>${esc(n.label)}</b></div>
+    <div class="field">Type: ${esc(n._file_type || 'unknown')}</div>
+    <div class="field">Community: ${esc(n._community_name)}</div>
+    <div class="field">Source: ${esc(n._source_file || '-')}</div>
+    <div class="field">Degree: ${n._degree}</div>
+    ${neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${neighborIds.length})</div><div id="neighbors-list">${neighborItems}</div>` : ''}
+  `;
+}
+
+function focusNode(nodeId) {
+  network.focus(nodeId, { scale: 1.4, animation: true });
+  network.selectNodes([nodeId]);
+  showInfo(nodeId);
+}
+
+// Track hovered node — hover detection is more reliable than click params
+let hoveredNodeId = null;
+network.on('hoverNode', params => {
+  hoveredNodeId = params.node;
+  container.style.cursor = 'pointer';
+});
+network.on('blurNode', () => {
+  hoveredNodeId = null;
+  container.style.cursor = 'default';
+});
+container.addEventListener('click', () => {
+  if (hoveredNodeId !== null) {
+    showInfo(hoveredNodeId);
+    network.selectNodes([hoveredNodeId]);
+  }
+});
+network.on('click', params => {
+  if (params.nodes.length > 0) {
+    showInfo(params.nodes[0]);
+  } else if (hoveredNodeId === null) {
+    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
+  }
+});
+
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.style.display = 'none'; return; }
+  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.style.display = 'block';
+  matches.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'search-item';
+    el.textContent = n.label;
+    el.style.borderLeft = `3px solid ${n.color.background}`;
+    el.style.paddingLeft = '8px';
+    el.onclick = () => {
+      network.focus(n.id, { scale: 1.5, animation: true });
+      network.selectNodes([n.id]);
+      showInfo(n.id);
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    };
+    searchResults.appendChild(el);
+  });
+});
+document.addEventListener('click', e => {
+  if (!searchResults.contains(e.target) && e.target !== searchInput)
+    searchResults.style.display = 'none';
+});
+
+const hiddenCommunities = new Set();
+
+const selectAllCb = document.getElementById('select-all-cb');
+
+function updateSelectAllState() {
+  const total = LEGEND.length;
+  const hidden = hiddenCommunities.size;
+  selectAllCb.checked = hidden === 0;
+  selectAllCb.indeterminate = hidden > 0 && hidden < total;
+}
+
+function toggleAllCommunities(hide) {
+  document.querySelectorAll('.legend-item').forEach(item => {
+    hide ? item.classList.add('dimmed') : item.classList.remove('dimmed');
+  });
+  document.querySelectorAll('.legend-cb').forEach(cb => {
+    cb.checked = !hide;
+  });
+  LEGEND.forEach(c => {
+    if (hide) hiddenCommunities.add(c.cid); else hiddenCommunities.delete(c.cid);
+  });
+  const updates = RAW_NODES.map(n => ({ id: n.id, hidden: hide }));
+  nodesDS.update(updates);
+  updateSelectAllState();
+}
+
+const legendEl = document.getElementById('legend');
+LEGEND.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'legend-cb';
+  cb.checked = true;
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (cb.checked) {
+      hiddenCommunities.delete(c.cid);
+      item.classList.remove('dimmed');
+    } else {
+      hiddenCommunities.add(c.cid);
+      item.classList.add('dimmed');
+    }
+    const updates = RAW_NODES
+      .filter(n => n.community === c.cid)
+      .map(n => ({ id: n.id, hidden: !cb.checked }));
+    nodesDS.update(updates);
+    updateSelectAllState();
+  });
+  item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
+    <span class="legend-label">${c.label}</span>
+    <span class="legend-count">${c.count}</span>`;
+  item.prepend(cb);
+  item.onclick = (e) => {
+    if (e.target === cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  };
+  legendEl.appendChild(item);
+});
+</script>
+<script>
+// Render hyperedges as shaded regions
+const hyperedges = [{"id": "feature_dev_planning_pipeline", "label": "Feature Development Planning Pipeline (Brainstorm \u2192 Grill-Me \u2192 To-PRD \u2192 To-Issues)", "nodes": ["readme_feature_development_workflow", "skill_grillme_grill_me", "skill_toprd_to_prd", "skill_toissues_to_issues"], "relation": "form", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "README.md"}, {"id": "tdd_reference_docs_cluster", "label": "TDD Skill Reference Document Cluster", "nodes": ["skill_tdd_tdd_workflow", "tdd_mocking_mocking_guidelines", "tdd_tests_good_vs_bad_tests", "tdd_deepmodules_deep_module_design", "tdd_interfacedesign_interface_for_testability", "tdd_refactoring_refactor_candidates"], "relation": "participate_in", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "skills/tdd/SKILL.md"}, {"id": "clean_arch_language_pair", "label": "Clean Architecture Pattern Shared Across Go and Python", "nodes": ["skill_golangpatterns_clean_architecture", "skill_pythonpatterns_clean_architecture", "claudemd_project_project_config"], "relation": "implement", "confidence": "INFERRED", "confidence_score": 0.85, "source_file": "README.md"}];
+// afterDrawing passes ctx already transformed to network coordinate space.
+// Draw node positions raw — no manual pan/zoom/DPR math needed.
+network.on('afterDrawing', function(ctx) {
+    hyperedges.forEach(h => {
+        const positions = h.nodes
+            .map(nid => network.getPositions([nid])[nid])
+            .filter(p => p !== undefined);
+        if (positions.length < 2) return;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#6366f1';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Centroid and expanded hull in network coordinates
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const expanded = positions.map(p => ({
+            x: cx + (p.x - cx) * 1.15,
+            y: cy + (p.y - cy) * 1.15
+        }));
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        // Label
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.label, cx, cy - 5);
+        ctx.restore();
+    });
+});
+</script>
+</body>
+</html>
