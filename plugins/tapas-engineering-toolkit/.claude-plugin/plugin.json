@@ -1,5 +1,5 @@
 {
-  "name": "tapas-claude-toolkit",
+  "name": "tapas-engineering-toolkit",
   "version": "1.0.0",
   "description": "A curated toolkit of Claude Code skills for professional software engineering: TDD workflows, idiomatic Go and Python patterns, design challenge interviews, Jira integration, PRD generation, and production guardrails. Built for teams following clean architecture and disciplined feature development.",
   "author": {
