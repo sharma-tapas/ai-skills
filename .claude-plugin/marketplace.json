@@ -1,37 +1,37 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
-  "name": "tapas-engineering-marketplace",
-  "description": "A marketplace of Claude Code plugins for professional software engineering — TDD workflows, idiomatic Go and Python patterns, design challenges, Jira integration, PRD generation, and production guardrails.",
-  "owner": {
-    "name": "Tapas Sharma",
-    "email": ""
-  },
-  "plugins": [
-    {
-      "name": "tapas-engineering-toolkit",
-      "path": "plugins/tapas-engineering-toolkit",
-      "description": "A curated toolkit of Claude Code skills for professional software engineering: TDD workflows, idiomatic Go and Python patterns, design challenge interviews, Jira integration, PRD generation, and production guardrails. Built for teams following clean architecture and disciplined feature development.",
-      "author": {
+    "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+    "name": "tapas-engineering-marketplace",
+    "description": "A marketplace of Claude Code plugins for professional software engineering — TDD workflows, idiomatic Go and Python patterns, design challenges, Jira integration, PRD generation, and production guardrails.",
+    "owner": {
         "name": "Tapas Sharma",
         "email": ""
-      },
-      "categories": [
-        "development",
-        "testing",
-        "workflow"
-      ],
-      "tags": [
-        "tdd",
-        "golang",
-        "python",
-        "testing",
-        "clean-architecture",
-        "jira",
-        "prd",
-        "guardrails",
-        "claude-code",
-        "skills"
-      ]
-    }
-  ]
+    },
+    "plugins": [
+        {
+            "name": "tapas-engineering-toolkit",
+            "path": "plugins/tapas-engineering-toolkit",
+            "description": "A curated toolkit of Claude Code skills for professional software engineering: TDD workflows, idiomatic Go and Python patterns, design challenge interviews, Jira integration, PRD generation, and production guardrails. Built for teams following clean architecture and disciplined feature development.",
+            "author": {
+                "name": "Tapas Sharma",
+                "email": ""
+            },
+            "categories": [
+                "development",
+                "testing",
+                "workflow"
+            ],
+            "tags": [
+                "tdd",
+                "golang",
+                "python",
+                "testing",
+                "clean-architecture",
+                "jira",
+                "prd",
+                "guardrails",
+                "claude-code",
+                "skills"
+            ]
+        }
+    ]
 }
