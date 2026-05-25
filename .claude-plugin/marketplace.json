@@ -10,6 +10,10 @@
         {
             "name": "tapas-engineering-toolkit",
             "path": "plugins/tapas-engineering-toolkit",
+            "source": {
+                "type": "git",
+                "repo": "https://github.com/sharma-tapas/ai-skills"
+            },
             "description": "A curated toolkit of Claude Code skills for professional software engineering: TDD workflows, idiomatic Go and Python patterns, design challenge interviews, Jira integration, PRD generation, and production guardrails. Built for teams following clean architecture and disciplined feature development.",
             "author": {
                 "name": "Tapas Sharma",
