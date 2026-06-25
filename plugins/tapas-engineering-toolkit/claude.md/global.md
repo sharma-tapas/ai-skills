@@ -14,6 +14,11 @@ Rules that apply to every session in this repository, regardless of the current 
 - Add a matching `<project>ctl` CLI command for every new gRPC/REST endpoint.
 - Keep the three architecture layers strictly separate — never import across the boundary in the wrong direction.
 
+### Git & GitHub
+
+- Never run `git push` without explicit user confirmation first. This applies to all branches and all remotes. Committing being approved does not imply pushing is approved.
+- Never commit or push files containing API keys, tokens, passwords, or any credentials. Replace credentials with environment variable references before committing. If credentials are accidentally committed, alert the user immediately to rotate them.
+
 ### What Claude Must Never Do
 
 - Write hand-rolled HTTP handlers in Go — all REST is generated via grpc-gateway.
